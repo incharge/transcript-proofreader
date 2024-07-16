@@ -253,26 +253,18 @@ export class ProofreadTranscript {
 
 export class ProofreadDom extends ProofreadTranscript {
   private prefix: string;
+  private isEdit: boolean;
   
   constructor() {
     super();
     this.prefix = "ic";
+    this.isEdit = false;
   }
 
-  // Set the transcript by passing in the URL of a transcript file or a TranscriptSchema object.
-  async load(transcript: string | TranscriptSchema) {
-    if ( typeof transcript === "string") {
-      // Load from URL using the DOM
-      const response = await window.fetch(transcript);
-      this.transcript = await response.json();
-    }
-    else {
-      // Load from TranscriptSchema object
-      super.load(transcript);
-    }
+  reload() {
     this.loaded();
-
     this.updateLine();
+    this.setEdit(false);
 
     // Set the transcript's audio url (if any) in the audio player (if any)
     const url: string = this.getUrl();
@@ -294,9 +286,23 @@ export class ProofreadDom extends ProofreadTranscript {
       selectElement.innerHTML = html;
     } 
   }
+
+  // Set the transcript by passing in the URL of a transcript file or a TranscriptSchema object.
+  async load(transcript: string | TranscriptSchema) {
+    if ( typeof transcript === "string") {
+      // Load from URL using the DOM
+      const response = await window.fetch(transcript);
+      this.transcript = await response.json();
+    }
+    else {
+      // Load from TranscriptSchema object
+      super.load(transcript);
+    }
+    this.reload();
+  }
   
+  // Setup a button's click event handler
   attachButton(id: string, eventHandler: EventHandler) : void {
-    // Setup the load button handler
     let element: HTMLElement | null = document.getElementById(this.prefix + id);
     if (element) {
       element.addEventListener("click", eventHandler);
@@ -331,12 +337,24 @@ export class ProofreadDom extends ProofreadTranscript {
       }
     }
 
-    this.attachButton("-load", this.handleLoadButtonClick);
+    this.attachButton("-load-url", this.handleLoadUrlButtonClick);
+    this.attachButton("-load-local", this.handleLoadLocalButtonClick);
     this.attachButton("-skip-to-offset", this.handleSkipButtonClick);
     this.attachButton("-prev-line", this.handleLineButton);
     this.attachButton("-next-line", this.handleLineButton);
     this.attachButton("-rw-btn", this.handeRwFfButton);
     this.attachButton("-ff-btn", this.handeRwFfButton);
+    this.attachButton("-save", this.handleSaveButton);
+    this.attachButton("-cancel", this.handleCancelButton);
+    this.attachButton("-download", this.handleDownloadButton);
+    this.attachButton("-load-file", this.handleUploadButton);
+
+    this.setEdit(false);
+
+    element = document.getElementById(this.prefix + "-upload-file");
+    if (element) {
+      element.addEventListener("change", this.handleUploadFile);
+    }  
 
     // Set the select onchange handler
     element = document.getElementById(this.prefix + "-select-line");
@@ -348,6 +366,7 @@ export class ProofreadDom extends ProofreadTranscript {
     element = document.getElementById(this.prefix + "-line");
     if (element) {
       element.addEventListener("click", this.handleClickWord);
+      element.addEventListener("dblclick", this.handleDoubleClickWord);
     }
   }
 
@@ -387,12 +406,19 @@ export class ProofreadDom extends ProofreadTranscript {
     }
   }
 
-  handleLoadButtonClick = async (event: Event) => {
+  handleLoadUrlButtonClick = async (event: Event) => {
     if (event.type === "click") {
       const el = document.getElementById(this.prefix + "-transcript-url") as HTMLInputElement;
       if (el) {
         await this.load(el.value);
       }
+    }
+  }
+
+  handleLoadLocalButtonClick = async (event: Event) => {
+    if (event.type === "click") {
+      this.loadLocal();
+      this.reload();
     }
   }
 
@@ -434,6 +460,22 @@ export class ProofreadDom extends ProofreadTranscript {
     const audio = event.target as HTMLAudioElement;
     const currentTime: number = audio.currentTime;
     this.setCurrentTime(currentTime);
+    if (this.isEdit) {
+      // Going into edit mode.
+      this.isEdit = false;
+      const audioElement: HTMLAudioElement | null = document.getElementById(this.prefix + "-audio") as HTMLAudioElement;
+      if (audioElement) {
+        audioElement.pause();
+      }
+
+      // Load the curent word into the editor
+      this.setEdit(true);
+      const el = document.getElementById(this.prefix + "-edit-word") as HTMLInputElement;
+      if (el) {
+        el.value = this.transcript.lines[this.currentLine].words[this.currentWord].content;
+        el.focus();
+      }
+    }
   }
 
   skipTo(offset: number) {
@@ -480,7 +522,7 @@ export class ProofreadDom extends ProofreadTranscript {
     const audioElement: HTMLAudioElement | null = document.getElementById(this.prefix + "-audio") as HTMLAudioElement;
     if (audioElement && buttonElement) {
       let seconds: number = parseInt(buttonElement.getAttribute("data-seconds") || '');
-      console.log(seconds);
+      //console.log(seconds);
       seconds = isNaN(seconds) ? (buttonElement.id == this.prefix + "-rw-btn" ? -5 : 15) : seconds;
       const time = audioElement.currentTime + seconds;
       this.skipTo(time);
@@ -493,13 +535,97 @@ export class ProofreadDom extends ProofreadTranscript {
 
   // Go to the clicked word
   handleClickWord = (event: Event) : void => {
-    const element:HTMLElement | null  = event.target as HTMLElement;
+    const element:HTMLElement | null = event.target as HTMLElement;
     let wordIndex = this.wordIdToWordIndex(element.id);
     if (isNaN(wordIndex)) {
       wordIndex = this.transcript.lines[this.currentLine].words.length -1;
     }
 
     this.skipTo( this.getStartTime([this.currentLine, wordIndex]));
+  }
+
+  handleDoubleClickWord = (event: Event) : void => {
+    //event.preventDefault();
+    this.isEdit = true;
+    this.skipTo( this.getStartTime([this.currentLine, this.currentWord]));
+  }
+
+  setEdit(isEnable: boolean) {
+    let elementInput: HTMLInputElement | null = document.getElementById(this.prefix + "-edit-word") as HTMLInputElement;
+    if (elementInput) {
+      elementInput.value = "";
+      elementInput.disabled = !isEnable;
+    }
+
+    let elementButton: HTMLButtonElement | null;
+    elementButton = document.getElementById(this.prefix + "-save") as HTMLButtonElement;
+    if (elementButton) {
+      elementButton.disabled = !isEnable;
+    }
+    elementButton = document.getElementById(this.prefix + "-cancel") as HTMLButtonElement;
+    if (elementButton) {
+      elementButton.disabled = !isEnable;
+    }  
+  }
+
+  handleSaveButton = (event: Event) : void => {
+    const el = document.getElementById(this.prefix + "-edit-word") as HTMLInputElement;
+    const TranscriptWord = this.transcript.lines[this.currentLine].words[this.currentWord];
+    TranscriptWord.content = el.value;
+    TranscriptWord.confidence = 1;
+    this.updateLine();
+    this.saveLocal();
+    this.setEdit(false);
+  }
+
+  handleCancelButton = (event: Event) : void => {
+    this.setEdit(false);
+  }
+
+  saveLocal() {
+    localStorage.setItem("transcript", JSON.stringify(this.transcript));
+  }
+
+  loadLocal() {
+    const transcript: string | null = localStorage.getItem("transcript")
+    if (transcript) {
+      this.transcript = JSON.parse(transcript);
+    }
+  }
+
+  handleUploadButton = (event: Event) : void => {
+    const element:HTMLInputElement | null = document.getElementById(this.prefix + "-upload-file") as HTMLInputElement;
+    if (element) {
+      element.click();
+    }
+  }
+
+  handleUploadFile = (event: Event) : void => {
+    const element:HTMLInputElement | null = event.target as HTMLInputElement;
+    if (element && element.files && element.files.length) {
+      const reader = new FileReader();
+      // Read the image as base64 data
+      reader.onload = (e) => {
+        if (e.target && e.target.result && typeof(e.target.result) == "string") {
+          this.transcript = JSON.parse(e.target.result);
+          this.reload();
+        }
+      }
+      reader.readAsText(element.files[0]);
+    }
+  }
+
+  handleDownloadButton = (event: Event) : void => {
+    const blob = new Blob(
+      [JSON.stringify(this.transcript)], 
+      { type: 'text/json;charset=utf-8' }
+    );
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = "transcript.json";
+    anchor.click(); // Click the link to trigger the file download
+    URL.revokeObjectURL(blobUrl);
   }
 }
 

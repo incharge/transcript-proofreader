@@ -1,6 +1,6 @@
 {
   "name": "@incharge/transcript-proofreader",
-  "version": "0.0.4-alpha.8",
+  "version": "0.0.4-alpha.18",
   "description": "Work in progress - A UI component for proofreading and editing transcripts",
   "author": "Julian Price, inCharge Ltd",
   "license": "ISC",
@@ -57,6 +57,6 @@
   "homepage": "https://github.com/incharge/transcript-proofreader#readme",
   "readme": "readme.md",
   "dependencies": {
-    "@incharge/transcript-core": "^0.0.4-alpha.5"
+    "@incharge/transcript-core": "^0.0.4-alpha.9"
   }
 }
