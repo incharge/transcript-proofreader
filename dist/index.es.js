@@ -4,21 +4,17 @@
  * author: Julian Price, inCharge Ltd
  * repository: git+https://github.com/incharge/transcript-proofreader
  */
-const fs = new Proxy({}, {
-  get(_, key) {
-    throw new Error(`Module "node:fs/promises" has been externalized for browser compatibility. Cannot access "node:fs/promises.${key}" in client code.  See https://vitejs.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.`);
-  }
-});
+const fs = {};
 function htmlEncode(input) {
   return input.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 function wordBackgroundColor(word, isCurrent = false) {
   let confidence = word.confidence || 0.99;
-  if (word.end_time === void 0) {
-    return "";
-  } else if (isCurrent)
+  if (isCurrent) {
     return "#FFFF33";
-  else if (confidence > 0.99) {
+  } else if (word.filler === true) {
+    return "#cccccc";
+  } else if (word.start_time === void 0 || confidence > 0.99) {
     return "";
   } else {
     const minimumColor = 99;
@@ -41,11 +37,6 @@ function secondsToHms(time) {
   }
   return new Date(Math.floor(time) * 1e3).toISOString().substring(from, 19);
 }
-new Proxy({}, {
-  get(_, key) {
-    throw new Error(`Module "node:fs/promises" has been externalized for browser compatibility. Cannot access "node:fs/promises.${key}" in client code.  See https://vitejs.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.`);
-  }
-});
 class ProofreadTranscript {
   constructor() {
     this.getCurrentLineWords = () => {
@@ -330,6 +321,14 @@ class ProofreadDom extends ProofreadTranscript {
   attach(url, prefix = "ic") {
     this.prefix = prefix;
     let element;
+    const el = document.getElementById(prefix + "-transcript-url");
+    if (el) {
+      if (url) {
+        el.value = url;
+      } else if (el.value) {
+        url = el.value;
+      }
+    }
     element = document.getElementById(this.prefix + "-audio");
     if (element) {
       element.addEventListener("timeupdate", this.handleTimeupdate);
@@ -343,12 +342,6 @@ class ProofreadDom extends ProofreadTranscript {
     this.attachButton("-next-line", this.handleLineButton);
     this.attachButton("-rw-btn", this.handeRwFfButton);
     this.attachButton("-ff-btn", this.handeRwFfButton);
-    if (url) {
-      element = document.getElementById(prefix + "-transcript-url");
-      if (element) {
-        element.value = url;
-      }
-    }
     element = document.getElementById(this.prefix + "-select-line");
     if (element) {
       element.addEventListener("change", this.handleSelectLine);
