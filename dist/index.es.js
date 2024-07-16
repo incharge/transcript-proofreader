@@ -14,6 +14,8 @@ function wordBackgroundColor(word, isCurrent = false) {
     return "#FFFF33";
   } else if (word.filler === true) {
     return "#cccccc";
+  } else if (confidence == 1) {
+    return "#00ff00";
   } else if (word.start_time === void 0 || confidence > 0.99) {
     return "";
   } else {
@@ -233,7 +235,7 @@ class ProofreadTranscript {
 class ProofreadDom extends ProofreadTranscript {
   constructor() {
     super();
-    this.handleLoadButtonClick = async (event) => {
+    this.handleLoadUrlButtonClick = async (event) => {
       if (event.type === "click") {
         const el = document.getElementById(this.prefix + "-transcript-url");
         if (el) {
@@ -241,10 +243,29 @@ class ProofreadDom extends ProofreadTranscript {
         }
       }
     };
+    this.handleLoadLocalButtonClick = async (event) => {
+      if (event.type === "click") {
+        this.loadLocal();
+        this.reload();
+      }
+    };
     this.handleTimeupdate = async (event) => {
       const audio = event.target;
       const currentTime = audio.currentTime;
       this.setCurrentTime(currentTime);
+      if (this.isEdit) {
+        this.isEdit = false;
+        const audioElement = document.getElementById(this.prefix + "-audio");
+        if (audioElement) {
+          audioElement.pause();
+        }
+        this.setEdit(true);
+        const el = document.getElementById(this.prefix + "-edit-word");
+        if (el) {
+          el.value = this.transcript.lines[this.currentLine].words[this.currentWord].content;
+          el.focus();
+        }
+      }
     };
     this.handleSkipButtonClick = (event) => {
       if (event.type === "click") {
@@ -269,7 +290,6 @@ class ProofreadDom extends ProofreadTranscript {
       const audioElement = document.getElementById(this.prefix + "-audio");
       if (audioElement && buttonElement) {
         let seconds = parseInt(buttonElement.getAttribute("data-seconds") || "");
-        console.log(seconds);
         seconds = isNaN(seconds) ? buttonElement.id == this.prefix + "-rw-btn" ? -5 : 15 : seconds;
         const time = audioElement.currentTime + seconds;
         this.skipTo(time);
@@ -283,18 +303,60 @@ class ProofreadDom extends ProofreadTranscript {
       }
       this.skipTo(this.getStartTime([this.currentLine, wordIndex]));
     };
+    this.handleDoubleClickWord = (event) => {
+      this.isEdit = true;
+      this.skipTo(this.getStartTime([this.currentLine, this.currentWord]));
+    };
+    this.handleSaveButton = (event) => {
+      const el = document.getElementById(this.prefix + "-edit-word");
+      const TranscriptWord = this.transcript.lines[this.currentLine].words[this.currentWord];
+      TranscriptWord.content = el.value;
+      TranscriptWord.confidence = 1;
+      this.updateLine();
+      this.saveLocal();
+      this.setEdit(false);
+    };
+    this.handleCancelButton = (event) => {
+      this.setEdit(false);
+    };
+    this.handleUploadButton = (event) => {
+      const element = document.getElementById(this.prefix + "-upload-file");
+      if (element) {
+        element.click();
+      }
+    };
+    this.handleUploadFile = (event) => {
+      const element = event.target;
+      if (element && element.files && element.files.length) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target && e.target.result && typeof e.target.result == "string") {
+            this.transcript = JSON.parse(e.target.result);
+            this.reload();
+          }
+        };
+        reader.readAsText(element.files[0]);
+      }
+    };
+    this.handleDownloadButton = (event) => {
+      const blob = new Blob(
+        [JSON.stringify(this.transcript)],
+        { type: "text/json;charset=utf-8" }
+      );
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = "transcript.json";
+      anchor.click();
+      URL.revokeObjectURL(blobUrl);
+    };
     this.prefix = "ic";
+    this.isEdit = false;
   }
-  // Set the transcript by passing in the URL of a transcript file or a TranscriptSchema object.
-  async load(transcript) {
-    if (typeof transcript === "string") {
-      const response = await window.fetch(transcript);
-      this.transcript = await response.json();
-    } else {
-      super.load(transcript);
-    }
+  reload() {
     this.loaded();
     this.updateLine();
+    this.setEdit(false);
     const url = this.getUrl();
     if (url != "") {
       const audioElement = document.getElementById(this.prefix + "-audio");
@@ -312,6 +374,17 @@ class ProofreadDom extends ProofreadTranscript {
       selectElement.innerHTML = html;
     }
   }
+  // Set the transcript by passing in the URL of a transcript file or a TranscriptSchema object.
+  async load(transcript) {
+    if (typeof transcript === "string") {
+      const response = await window.fetch(transcript);
+      this.transcript = await response.json();
+    } else {
+      super.load(transcript);
+    }
+    this.reload();
+  }
+  // Setup a button's click event handler
   attachButton(id, eventHandler) {
     let element = document.getElementById(this.prefix + id);
     if (element) {
@@ -336,12 +409,22 @@ class ProofreadDom extends ProofreadTranscript {
         this.load(url);
       }
     }
-    this.attachButton("-load", this.handleLoadButtonClick);
+    this.attachButton("-load-url", this.handleLoadUrlButtonClick);
+    this.attachButton("-load-local", this.handleLoadLocalButtonClick);
     this.attachButton("-skip-to-offset", this.handleSkipButtonClick);
     this.attachButton("-prev-line", this.handleLineButton);
     this.attachButton("-next-line", this.handleLineButton);
     this.attachButton("-rw-btn", this.handeRwFfButton);
     this.attachButton("-ff-btn", this.handeRwFfButton);
+    this.attachButton("-save", this.handleSaveButton);
+    this.attachButton("-cancel", this.handleCancelButton);
+    this.attachButton("-download", this.handleDownloadButton);
+    this.attachButton("-load-file", this.handleUploadButton);
+    this.setEdit(false);
+    element = document.getElementById(this.prefix + "-upload-file");
+    if (element) {
+      element.addEventListener("change", this.handleUploadFile);
+    }
     element = document.getElementById(this.prefix + "-select-line");
     if (element) {
       element.addEventListener("change", this.handleSelectLine);
@@ -349,6 +432,7 @@ class ProofreadDom extends ProofreadTranscript {
     element = document.getElementById(this.prefix + "-line");
     if (element) {
       element.addEventListener("click", this.handleClickWord);
+      element.addEventListener("dblclick", this.handleDoubleClickWord);
     }
   }
   // The current line has changed. Update the UI accordingly
@@ -404,6 +488,31 @@ class ProofreadDom extends ProofreadTranscript {
   }
   wordIdToWordIndex(wordId) {
     return parseInt(wordId.substring(this.prefix.length + 6));
+  }
+  setEdit(isEnable) {
+    let elementInput = document.getElementById(this.prefix + "-edit-word");
+    if (elementInput) {
+      elementInput.value = "";
+      elementInput.disabled = !isEnable;
+    }
+    let elementButton;
+    elementButton = document.getElementById(this.prefix + "-save");
+    if (elementButton) {
+      elementButton.disabled = !isEnable;
+    }
+    elementButton = document.getElementById(this.prefix + "-cancel");
+    if (elementButton) {
+      elementButton.disabled = !isEnable;
+    }
+  }
+  saveLocal() {
+    localStorage.setItem("transcript", JSON.stringify(this.transcript));
+  }
+  loadLocal() {
+    const transcript = localStorage.getItem("transcript");
+    if (transcript) {
+      this.transcript = JSON.parse(transcript);
+    }
   }
 }
 class ProofreadFilesystem extends ProofreadTranscript {

@@ -30,12 +30,15 @@ export declare class ProofreadTranscript {
 }
 export declare class ProofreadDom extends ProofreadTranscript {
     private prefix;
+    private isEdit;
     constructor();
+    reload(): void;
     load(transcript: string | TranscriptSchema): Promise<void>;
     attachButton(id: string, eventHandler: EventHandler): void;
     attach(url: string | null, prefix?: string): void;
     updateLine(): void;
-    handleLoadButtonClick: (event: Event) => Promise<void>;
+    handleLoadUrlButtonClick: (event: Event) => Promise<void>;
+    handleLoadLocalButtonClick: (event: Event) => Promise<void>;
     setBackgroundColor(lineIndex: number, wordIndex: number): void;
     setCurrentTime(currentTime: number): boolean;
     handleTimeupdate: (event: Event) => Promise<void>;
@@ -46,6 +49,15 @@ export declare class ProofreadDom extends ProofreadTranscript {
     handeRwFfButton: (event: Event) => void;
     wordIdToWordIndex(wordId: string): number;
     handleClickWord: (event: Event) => void;
+    handleDoubleClickWord: (event: Event) => void;
+    setEdit(isEnable: boolean): void;
+    handleSaveButton: (event: Event) => void;
+    handleCancelButton: (event: Event) => void;
+    saveLocal(): void;
+    loadLocal(): void;
+    handleUploadButton: (event: Event) => void;
+    handleUploadFile: (event: Event) => void;
+    handleDownloadButton: (event: Event) => void;
 }
 export declare class ProofreadFilesystem extends ProofreadTranscript {
     load(transcript: string | TranscriptSchema): Promise<void>;
